@@ -85,6 +85,7 @@ static int show_debug = 0;
 static int max_ff_speed = 3; // 4x
 static int ff_audio = 0;
 static int threaded_video_enabled = 1;
+static int threaded_video_start_pending = 0;
 static int fast_forward = 0;
 static int rewind_pressed = 0;
 static int rewind_toggle = 0;
@@ -3176,11 +3177,13 @@ static void Config_syncFrontend(char* key, int value) {
 	}
 	else if (exactMatch(key,config.frontend.options[FE_OPT_THREADED_VIDEO].key)) {
 		threaded_video_enabled = value;
+		if (!threaded_video_enabled)
+			threaded_video_start_pending = 0;
 		i = FE_OPT_THREADED_VIDEO;
 		if (core.initialized && !show_menu) {
-			if (threaded_video_enabled)
+			if (threaded_video_enabled && !threaded_video_start_pending)
 				ThreadedVideo_start();
-			else
+			else if (!threaded_video_enabled)
 				ThreadedVideo_stop();
 		}
 	}
@@ -6280,6 +6283,7 @@ static void ThreadedVideo_start(void) {
 	if (!threaded_video_enabled || threaded_video.running)
 		return;
 
+	threaded_video_start_pending = 0;
 	PLAT_releaseGLContext();
 	pthread_mutex_lock(&threaded_video.mutex);
 	threaded_video.stop_requested = 0;
@@ -6528,6 +6532,14 @@ static void video_refresh_callback(const void* data, unsigned width, unsigned he
 
 	// Render the frame
 	video_refresh_callback_main(data, width, height, pitch);
+	if (threaded_video_start_pending &&
+		threaded_video_enabled &&
+		!threaded_video.running &&
+		renderer.dst_p != 0 &&
+		renderer.true_w > 0 &&
+		renderer.true_h > 0) {
+		ThreadedVideo_start();
+	}
 }
 ///////////////////////////////
 
@@ -9621,6 +9633,7 @@ int main(int argc , char* argv[]) {
 	Config_load(); // before init?
 	Config_init();
 	Config_readOptions(); // cores with boot logo option (eg. gb) need to load options early
+	threaded_video_start_pending = threaded_video_enabled;
 	setOverclock(overclock); // why twice?
 	
 	Core_init();
@@ -9687,8 +9700,6 @@ int main(int argc , char* argv[]) {
 	if (core.serialize_size) Rewind_on_state_change();
 	// release config when all is loaded
 	Config_free();
-	if (threaded_video_enabled)
-		ThreadedVideo_start();
 
 	LOG_info("total startup time %ims\n\n",SDL_GetTicks());
 	while (!quit) {
