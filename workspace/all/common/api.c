@@ -195,6 +195,8 @@ static struct SND_Context
 	int frame_filled; // max_buf_w
 
 	int device_id; // SDL device id
+	SND_Frame last_frame;
+	int last_frame_valid;
 } snd = {0};
 
 typedef struct {
@@ -2315,17 +2317,24 @@ static void SND_audioCallback(void *userdata, uint8_t *stream, int len)
 	pthread_mutex_lock(&audio_mutex);
 	while (snd.frame_out != snd.frame_in && len > 0)
 	{
-		*out++ = snd.buffer[snd.frame_out].left;
-		*out++ = snd.buffer[snd.frame_out].right;
+		snd.last_frame = snd.buffer[snd.frame_out];
+		snd.last_frame_valid = 1;
+		*out++ = snd.last_frame.left;
+		*out++ = snd.last_frame.right;
 		snd.frame_out += 1;
 		len -= 1;
 		if (snd.frame_out >= snd.frame_count)
 			snd.frame_out = 0;
 	}
+	SND_Frame fill_frame = snd.last_frame_valid ? snd.last_frame : (SND_Frame){0};
 	pthread_mutex_unlock(&audio_mutex);
 
-	if (len > 0)
-		memset(out, 0, len * (sizeof(int16_t) * 2));
+	while (len > 0)
+	{
+		*out++ = fill_frame.left;
+		*out++ = fill_frame.right;
+		len -= 1;
+	}
 }
 static void SND_resizeBuffer(void)
 { // plat_sound_resize_buffer
@@ -2350,6 +2359,8 @@ static void SND_resizeBuffer(void)
 
 	snd.frame_in = 0;
 	snd.frame_out = 0;
+	snd.last_frame = (SND_Frame){0};
+	snd.last_frame_valid = 0;
 
 #if defined(USE_SDL2)
 	SDL_UnlockAudioDevice(snd.device_id);
@@ -2823,6 +2834,8 @@ void SND_init(double sample_rate, double frame_rate)
 
 	SDL_AudioSpec spec_in;
 	SDL_AudioSpec spec_out;
+	SDL_zero(spec_in);
+	SDL_zero(spec_out);
 
 	spec_in.freq = PLAT_pickSampleRate(sample_rate, MAX_SAMPLE_RATE);
 	spec_in.format = AUDIO_S16;
@@ -2831,7 +2844,13 @@ void SND_init(double sample_rate, double frame_rate)
 	spec_in.callback = SND_audioCallback;
 
 #if defined(USE_SDL2)
-	snd.device_id = SDL_OpenAudioDevice(NULL, 0, &spec_in, &spec_out, SDL_AUDIO_ALLOW_ANY_CHANGE);
+	snd.device_id = SDL_OpenAudioDevice(
+		NULL,
+		0,
+		&spec_in,
+		&spec_out,
+		SDL_AUDIO_ALLOW_FREQUENCY_CHANGE | SDL_AUDIO_ALLOW_SAMPLES_CHANGE
+	);
 	if (snd.device_id <= 0)
 	{
 		LOG_info("SDL_OpenAudioDevice error: %s\n", SDL_GetError());
@@ -2851,6 +2870,8 @@ void SND_init(double sample_rate, double frame_rate)
 #endif
 
 	LOG_info("We now have audio device #%d\n", snd.device_id);
+	LOG_info("audio spec: format=0x%x channels=%d samples=%d freq=%d\n",
+		spec_out.format, spec_out.channels, spec_out.samples, spec_out.freq);
 
 	snd.frame_count = ((float)spec_out.freq / SCREEN_FPS) * 8; // buffer size based on sample rate out (times 12 samples headroom)
 	perf.buffer_size = snd.frame_count;

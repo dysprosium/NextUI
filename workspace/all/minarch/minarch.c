@@ -5847,7 +5847,13 @@ static int video_refresh_present(const ThreadedVideoStateSnapshot *state, const 
 	// eg. true src + cropped src + fixed dst + cropped dst
 	if (state->force_reset || renderer.dst_p==0 || width!=renderer.true_w || height!=renderer.true_h) {
 		selectScalerWithState(width, height, pitch, state->screen_scaling, state->aspect_ratio);
-		GFX_clearAll();
+		/*
+		 * The threaded worker owns the GL context, but the SDL renderer still
+		 * lives on the main thread. Let the GL swap path clear the backbuffer
+		 * after a threaded reset instead of calling into the SDL renderer here.
+		 */
+		if (!threaded_mode)
+			GFX_clearAll();
 		if (!state->shader_reset_suppressed) {
 			GFX_resetShaders();
 		} else {
