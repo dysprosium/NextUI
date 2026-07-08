@@ -235,7 +235,8 @@ namespace {
         enum Vendor {
             Unknown,
             Trimui,
-            Miyoo
+            Miyoo,
+            Anbernic
         };
 
         enum Model {
@@ -243,14 +244,19 @@ namespace {
             Brick,
             SmartPro,
             SmartProS,
-            Flip
+            Flip,
+            RG40XX,
+            RG34XX,
+            RG28XX,
+            RGCubeXX
         };
 
         enum Platform {
             UnknownPlatform,
             tg5040,
             tg5050,
-            my355
+            my355,
+            h700
         };
 
         DeviceInfo() {
@@ -272,6 +278,22 @@ namespace {
                     m_vendor = Trimui;
                     m_model = Flip;
                     m_platform = my355;
+                } else if(exactMatch("rg40xx", device)) {
+                    m_vendor = Anbernic;
+                    m_model = RG40XX;
+                    m_platform = h700;
+                } else if(exactMatch("rg34xx", device)) {
+                    m_vendor = Anbernic;
+                    m_model = RG34XX;
+                    m_platform = h700;
+                } else if(exactMatch("rg28xx", device)) {
+                    m_vendor = Anbernic;
+                    m_model = RG28XX;
+                    m_platform = h700;
+                } else if(exactMatch("cube", device)) {
+                    m_vendor = Anbernic;
+                    m_model = RGCubeXX;
+                    m_platform = h700;
                 }
             }
         }
@@ -281,19 +303,19 @@ namespace {
         Platform getPlatform() const { return m_platform; }
 
         bool hasColorTemperature() const {
-            return m_platform == tg5040;
+            return m_platform == tg5040 || m_platform == h700;
         }
 
         bool hasContrastSaturation() const {
-            return m_platform == my355 || m_platform == tg5040;
+            return m_platform == my355 || m_platform == tg5040 || m_platform == h700;
         }
 
         bool hasExposure() const {
-            return m_platform == tg5040;
+            return m_platform == tg5040 || m_platform == h700;
         }
 
         bool hasDisplayCal() const {
-            return m_platform == tg5040;
+            return m_platform == tg5040 || m_platform == h700;
         }
 
         bool hasActiveCooling() const {
@@ -305,15 +327,15 @@ namespace {
         }
 
         bool hasAnalogSticks() const {
-            return m_model == SmartPro || m_model == SmartProS;
+            return m_model == SmartPro || m_model == SmartProS || m_model == RG40XX || m_model == RGCubeXX;
         }
 
         bool hasWifi() const {
-            return m_platform == tg5050 || m_platform == tg5040 || m_platform == my355;
+            return m_platform == tg5050 || m_platform == tg5040 || m_platform == my355 || m_platform == h700;
         }
 
         bool hasBluetooth() const {
-            return m_platform == tg5050 || m_platform == tg5040 || m_platform == my355;
+            return m_platform == tg5050 || m_platform == tg5040 || m_platform == my355 || m_platform == h700;
         }
 
     private:
