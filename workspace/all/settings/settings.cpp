@@ -332,7 +332,7 @@ namespace {
         }
 
         bool hasMuteToggle() const {
-            return m_platform == tg5050 || m_platform == tg5040;
+            return m_platform == tg5050 || m_platform == tg5040 || m_platform == h700;
         }
 
         bool hasAnalogSticks() const {
