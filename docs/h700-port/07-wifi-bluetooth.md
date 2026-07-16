@@ -36,21 +36,35 @@ RetroAchievements login and unlock work on RG34XXSP, including credential entry 
 the on-screen keyboard. Pak Store and OTA update are explicitly excluded from the alpha
 scope; testing is not applicable and they are not alpha release gates.
 
-## Bluetooth (as shipped — system BlueZ, input implemented, audio gated off)
+## Bluetooth (as shipped — system BlueZ, controller transport and stock A2DP enabled)
 
-- BlueZ 5.64 on device → no `btmanager`/upgrade-pakz (as planned); `generic_bt.c`
-  drives `bluetoothctl`
-- `bt_init.sh` ensures hci is up (stock's `rtk_hciattach` already ran), starts a
-  `bluetoothctl` agent (NoInputNoOutput), and would start `bluealsa
-  --profile=a2dp-source` **if the binary existed**
+- NextUI uses the stock BlueZ stack → no `btmanager`/upgrade-pakz. A clean 2026
+  RG40XXV reports 5.66 for both `bluetoothd` and `bluetoothctl`; earlier firmware
+  probing reported 5.64. `generic_bt.c` detects the client version at runtime.
+- The stock frontend normally creates `hci0` by calling
+  `/mnt/vendor/ctrl/setBluetooth.sh`, but NextUI replaces that frontend before the
+  call occurs. `bt_init.sh` now owns that vendor attach/enable lifecycle, waits for
+  `hci0`, and only then starts or restarts stock `bluetooth.service`.
+- Bluetooth lifecycle failures are recorded in
+  `$LOGS_PATH/bluetooth.txt` instead of being silently discarded.
 - `HAS_BTAGENT` enabled for h700 (settings pairing agent; jammy sysroot has glib —
-  links fine, loads on device)
-- **BT audio: deliberately not shipped this beta** — bluez-alsa is not in Ubuntu
-  22.04 and we chose to gate rather than build it: `-DNO_BT_AUDIO` hides the
-  samplerate UI, audiomon refuses A2DP sinks without a bluealsa binary, README says
-  so. Full story + re-enable path in 05 and 09-roadmap.
-- BT controller pairing/input: implemented via the SDL joystick path
-  (`SDL_JOYSTICK_DISABLE_UDEV=1`; corrected JOY_* indices in 03) — **untested**.
+  links fine, loads on device). It is the persistent pairing agent and owns the
+  pairable window; the init script does not create a short-lived `bluetoothctl`
+  agent.
+- **BT audio: stock-first A2DP enabled** — the clean 2026 RG40XXV stock image has
+  BlueALSA 4.2.0, its ALSA plugins/configuration, and its D-Bus policy. `bt_init.sh`
+  starts `bluealsa -p a2dp-source --a2dp-volume --initial-volume=100` after BlueZ is
+  ready and verifies `org.bluealsa`. The H700 `audiomon` build omits only the
+  `delay 0` setting rejected by the stock plugin; its remaining behavior is shared.
+  BlueALSA, its ALSA plugins, SBC, and BlueZ all remain stock and are not bundled or
+  replaced. AirPods 4 ANC playback is verified; automatic reconnect and suspend/resume
+  are tracked in 05/08.
+- BT controller transport is verified on RG40XXV: Settings discovers, pairs, trusts,
+  connects, and exposes a DualSense as an SDL joystick and evdev input device.
+  Button semantics are not fully normalized because the shared tg5040/tg5050/H700
+  input architecture interprets raw SDL joystick indices using platform constants.
+  That is a cross-platform controller-mapping issue, not an H700 Bluetooth bring-up
+  gap, and is deliberately deferred from this branch.
 
 ## Diagnostics
 

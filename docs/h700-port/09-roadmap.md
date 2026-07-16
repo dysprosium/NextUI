@@ -86,10 +86,16 @@ Ordered by impact within each section.
      nit: syncsettings still "restores" the no-op enhance values on resume.
    Worth a systematic sweep: grep settings.cpp / paks for capability flags that
    default to "present" and decide each for h700.
-9. **BT audio: ship bluealsa or formally drop it.** The gate-off is clean and
-   reversible (drop a `bluealsa` binary in `.system/h700/bin` and the path lights
-   up). Building bluez-alsa in the toolchain is the last piece of tg5040 feature
-   parity. If dropped instead, remove the dormant bt_init/audiomon plumbing.
+9. **BT audio: finish stock-first validation.** Clean RG40XXV stock provides
+   BlueALSA 4.2.0, ALSA plugins/configuration, and D-Bus policy. Daemon startup,
+   `org.bluealsa`, and SBC source endpoint registration pass; H700 now starts the
+   stock daemon and exposes the sampling-rate setting. No BlueALSA, ALSA plugin, SBC,
+   or BlueZ component is bundled. AirPods 4 ANC SBC playback now passes on RG40XXV;
+   the confirmed silence blockers were an unsupported `delay 0` ALSA option and zero
+   BlueZ transport volume. Complete automatic reconnect, game-switch, and
+   suspend/resume testing. Raw
+   external-controller button normalization is shared with tg5040/tg5050 and belongs
+   in a separate cross-platform change.
 10. **480p UI polish pass** (04) — verdict from real use on RG40XXV and RG34XXSP:
     **good for alpha**. The 720×480 Home UI, Battery, Game Tracker, Input, Clock,
     Settings, on-screen keyboard, Files, and in-game menus all work well. Box art is
@@ -146,8 +152,8 @@ Ordered by impact within each section.
     `workspace/h700/shim-common.sh`, packaged in both the self-extracting boot shim
     payload and `.tmp_update/h700/`.
 16. **Dedicated h700 toolchain image, revisited — deferred for alpha** (01) — a thin
-    `FROM tg5040-toolchain` layer pre-baking the pinned SDL2 (and bluealsa if #9
-    ships) removes the pitfall classes 1–3 in 01 structurally and cuts CI time. Do
+    `FROM tg5040-toolchain` layer pre-baking the pinned SDL2 removes the pitfall
+    classes 1–3 in 01 structurally and cuts CI time. Do
     it when the next external dep lands.
 17. **~~Trim remaining tg5040 residue in the skeleton~~ Done (2026-07-09)** —
     h700 paks/cfgs are clear of `default-brick`, `reboot_next`, `libUMP`, bundled
@@ -167,6 +173,6 @@ Ordered by impact within each section.
 - Sleep/wake solid across a 20-cycle soak + overnight drain ≤ stock + 1% (P0 #1)
 - Every 08-matrix row ✅ on RG40XXV, lid fixed on RG34XXSP, and the functional set ✅
   on RG34XXSP + RG28XX
-- BT audio shipped or explicitly descoped in README
+- BT audio headset playback/reconnect/suspend matrix passes on supported stock firmware
 - No debug behaviors in the release path; docs (README.txt) match actual behavior
 - CI: h700 + tg5040 both build on every PR touching shared code, with the ldd check
