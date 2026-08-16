@@ -13,6 +13,42 @@ sleep_retval=
 
 asound_state_dir=/tmp/asound-suspend
 
+auto_poweroff_secs=${NEXTUI_AUTO_POWEROFF_SECS:-0}
+case "$auto_poweroff_secs" in
+	''|*[!0-9]*) auto_poweroff_secs=0 ;;
+esac
+rtc_wakealarm=/sys/class/rtc/rtc0/wakealarm
+auto_poweroff_deadline=
+
+arm_auto_poweroff() {
+	[ "$auto_poweroff_secs" -gt 0 ] || return 0
+	if [ ! -w "$rtc_wakealarm" ]; then
+		>&2 echo "Automatic poweroff unavailable: RTC wake alarm is not writable"
+		return 0
+	fi
+
+	now=$(date +%s)
+	if printf '0\n' > "$rtc_wakealarm" 2>/dev/null &&
+		printf '+%s\n' "$auto_poweroff_secs" > "$rtc_wakealarm" 2>/dev/null; then
+		auto_poweroff_deadline=$((now + auto_poweroff_secs))
+		>&2 echo "Automatic poweroff armed for $auto_poweroff_secs seconds"
+	else
+		printf '0\n' > "$rtc_wakealarm" 2>/dev/null || true
+		>&2 echo "Automatic poweroff unavailable: failed to arm RTC wake alarm"
+	fi
+}
+
+clear_auto_poweroff() {
+	[ -n "$auto_poweroff_deadline" ] || return 0
+	printf '0\n' > "$rtc_wakealarm" 2>/dev/null || true
+}
+
+auto_poweroff_expired() {
+	[ -n "$auto_poweroff_deadline" ] || return 1
+	now=$(date +%s)
+	[ "$now" -ge "$auto_poweroff_deadline" ]
+}
+
 before() {
 	>&2 echo "Preparing for suspend..."
 
@@ -59,6 +95,7 @@ after() {
 }
 
 before
+arm_auto_poweroff
 
 >&2 echo "Suspending..."
 sleep_max_tries=5
@@ -94,6 +131,14 @@ for i in $(seq 1 $sleep_max_tries); do
 	>&2 echo "Deep sleep failed: retrying in 3 seconds"
 	sleep 3
 done
+
+if auto_poweroff_expired; then
+	clear_auto_poweroff
+	>&2 echo "Automatic poweroff timeout reached"
+	# Exit 2 is interpreted by PWR_deepSleep as a requested safe shutdown.
+	exit 2
+fi
+clear_auto_poweroff
 
 # Resume services in background to reduce UI latency
 after &
