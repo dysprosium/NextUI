@@ -16,6 +16,42 @@ sleep_retval=
 
 asound_state_dir=/tmp/asound-suspend
 
+shutdown_timeout_secs=${NEXTUI_SHUTDOWN_TIMEOUT_SECS:-0}
+case "$shutdown_timeout_secs" in
+	''|*[!0-9]*) shutdown_timeout_secs=0 ;;
+esac
+rtc_wakealarm=/sys/class/rtc/rtc0/wakealarm
+shutdown_timeout_deadline=
+
+arm_shutdown_timeout() {
+	[ "$shutdown_timeout_secs" -gt 0 ] || return 0
+	if [ ! -w "$rtc_wakealarm" ]; then
+		>&2 echo "Shutdown timeout unavailable: RTC wake alarm is not writable"
+		return 0
+	fi
+
+	now=$(date +%s)
+	if printf '0\n' > "$rtc_wakealarm" 2>/dev/null &&
+		printf '+%s\n' "$shutdown_timeout_secs" > "$rtc_wakealarm" 2>/dev/null; then
+		shutdown_timeout_deadline=$((now + shutdown_timeout_secs))
+		>&2 echo "Shutdown timeout armed for $shutdown_timeout_secs seconds"
+	else
+		printf '0\n' > "$rtc_wakealarm" 2>/dev/null || true
+		>&2 echo "Shutdown timeout unavailable: failed to arm RTC wake alarm"
+	fi
+}
+
+clear_shutdown_timeout() {
+	[ -n "$shutdown_timeout_deadline" ] || return 0
+	printf '0\n' > "$rtc_wakealarm" 2>/dev/null || true
+}
+
+shutdown_timeout_expired() {
+	[ -n "$shutdown_timeout_deadline" ] || return 1
+	now=$(date +%s)
+	[ "$now" -ge "$shutdown_timeout_deadline" ]
+}
+
 before() {
 	>&2 echo "Preparing for suspend..."
 	echo 1 > /sys/class/power_supply/axp2202-battery/work_led 2>/dev/null || true
@@ -82,6 +118,7 @@ after_async() {
 }
 
 before
+arm_shutdown_timeout
 
 hallkey=/sys/class/power_supply/axp2202-battery/hallkey
 os_sleep=/sys/class/power_supply/axp2202-battery/os_sleep
@@ -131,6 +168,13 @@ while :; do
 		sleep 3
 	done
 
+	# An RTC timeout takes priority over the clamshell re-suspend loop so a
+	# closed device can power off without first lighting the display.
+	if [ $sleep_retval -eq 0 ] && shutdown_timeout_expired; then
+		sleep_retval=2
+		break
+	fi
+
 	# Clamshells: a pocketed power press wakes the kernel even with the
 	# lid shut. Only hand control back to the caller (which turns the
 	# screen on) once the lid is actually open; otherwise re-suspend.
@@ -143,6 +187,13 @@ while :; do
 	fi
 	break
 done
+
+clear_shutdown_timeout
+if [ $sleep_retval -eq 2 ]; then
+	>&2 echo "Shutdown timeout reached"
+	# Exit 2 is interpreted by PWR_deepSleep as a requested safe shutdown.
+	exit 2
+fi
 
 after_sync
 after_async &
