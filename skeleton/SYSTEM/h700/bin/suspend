@@ -27,12 +27,32 @@ rtc_wakeup=$rtc_dir/device/power/wakeup
 shutdown_timeout_deadline=
 shutdown_timeout_rtc_deadline=
 
+rtc_alarm_available() {
+	if ! existing_alarm=$(cat "$rtc_wakealarm" 2>/dev/null); then
+		>&2 echo "Shutdown timeout unavailable: failed to read RTC wake alarm"
+		return 1
+	fi
+
+	case "$existing_alarm" in
+		'') return 0 ;;
+		*[!0-9]*)
+			>&2 echo "Shutdown timeout unavailable: invalid RTC wake alarm '$existing_alarm'"
+			return 1
+			;;
+		*)
+			>&2 echo "Shutdown timeout skipped: preserving existing RTC alarm $existing_alarm"
+			return 1
+			;;
+	esac
+}
+
 arm_shutdown_timeout() {
 	[ "$shutdown_timeout_secs" -gt 0 ] || return 0
 	if [ ! -w "$rtc_wakealarm" ]; then
 		>&2 echo "Shutdown timeout unavailable: $rtc_wakealarm is not writable"
 		return 0
 	fi
+	rtc_alarm_available || return 0
 
 	rtc_name=$(cat "$rtc_dir/name" 2>/dev/null)
 	rtc_wakeup_status=$(cat "$rtc_wakeup" 2>/dev/null)
@@ -45,11 +65,6 @@ arm_shutdown_timeout() {
 		fi
 	fi
 
-	if ! printf '0\n' > "$rtc_wakealarm" 2>/dev/null; then
-		>&2 echo "Shutdown timeout unavailable: failed to clear RTC wake alarm"
-		return 0
-	fi
-
 	rtc_now=$(cat "$rtc_since_epoch" 2>/dev/null)
 	case "$rtc_now" in
 		''|*[!0-9]*)
@@ -60,7 +75,6 @@ arm_shutdown_timeout() {
 
 	shutdown_timeout_rtc_deadline=$((rtc_now + shutdown_timeout_secs))
 	if ! printf '%s\n' "$shutdown_timeout_rtc_deadline" > "$rtc_wakealarm" 2>/dev/null; then
-		printf '0\n' > "$rtc_wakealarm" 2>/dev/null || true
 		shutdown_timeout_rtc_deadline=
 		>&2 echo "Shutdown timeout unavailable: failed to set absolute RTC wake alarm"
 		return 0
